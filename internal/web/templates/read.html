@@ -1,0 +1,28 @@
+{{define "content"}}
+<nav class="breadcrumbs" aria-label="Breadcrumbs">
+{{range $i, $c := .Breadcrumbs}}{{if $i}}<span class="sep">/</span>{{end}}<a href="{{browseHref $c.Path}}">{{$c.Name}}</a>{{end}}
+</nav>
+<header class="doc-header">
+<h1>{{.DocTitle}}</h1>
+<div class="reader-tools">
+<span class="sizes">Size:
+<a href="?size=sm" class="{{if eq .Size "sm"}}active{{end}}">S</a>
+<a href="?size=md" class="{{if eq .Size "md"}}active{{end}}">M</a>
+<a href="?size=lg" class="{{if eq .Size "lg"}}active{{end}}">L</a>
+</span>
+<a href="{{simpleHref .Path}}">Simple reader</a>
+<a href="{{rawHref .Path}}">Raw</a>
+</div>
+</header>
+<div class="reader-layout">
+{{if .Headings}}
+<nav class="toc" aria-label="Table of contents">
+<h2>Contents</h2>
+<ul>
+{{range .Headings}}<li class="toc-level-{{.Level}}"><a href="#{{.ID}}">{{.Text}}</a></li>{{end}}
+</ul>
+</nav>
+{{end}}
+<article class="prose">{{.HTML}}</article>
+</div>
+{{end}}

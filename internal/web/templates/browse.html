@@ -1,0 +1,161 @@
+{{define "fileActions"}}
+<div class="actions">
+<form method="post" action="/ui/rename" class="inline">
+<input type="hidden" name="path" value="{{.Path}}">
+<input type="text" name="name" value="{{.Name}}" aria-label="New name">
+<button type="submit">Rename</button>
+</form>
+<form method="post" action="/ui/delete" class="inline" onsubmit="return confirm('Delete {{.Name}}?')">
+<input type="hidden" name="path" value="{{.Path}}">
+<button type="submit" class="danger">Delete</button>
+</form>
+</div>
+{{end}}
+
+{{define "content"}}
+<nav class="breadcrumbs" aria-label="Breadcrumbs">
+{{range $i, $c := .Breadcrumbs}}{{if $i}}<span class="sep">/</span>{{end}}<a href="{{browseHref $c.Path}}">{{$c.Name}}</a>{{end}}
+</nav>
+<header class="browse-header">
+<h1>{{.Title}}</h1>
+</header>
+<div id="dropzone" class="dropzone" data-dir="{{.Path}}">
+Drop files here or use the upload form below.
+</div>
+
+{{if .Dirs}}
+<section class="listing">
+<h2>Folders</h2>
+<ul class="entries">
+{{range .Dirs}}
+<li class="entry folder">
+<a class="entry-name" href="{{browseHref .Path}}">{{.Name}}</a>
+<div class="actions">
+<form method="post" action="/ui/delete" class="inline" onsubmit="return confirm('Delete folder {{.Name}}? Only empty folders can be deleted.')">
+<input type="hidden" name="path" value="{{.Path}}">
+<button type="submit" class="danger">Delete</button>
+</form>
+</div>
+</li>
+{{end}}
+</ul>
+</section>
+{{end}}
+
+{{if .Documents}}
+<section class="listing">
+<h2>Documents</h2>
+<ul class="entries">
+{{range .Documents}}
+<li class="entry document">
+<a class="entry-name" href="{{readHref .Path}}">{{.Name}}</a>
+<span class="meta">{{humanSize .Size}} &middot; {{formatTime .ModTime}}</span>
+{{template "fileActions" .}}
+</li>
+{{end}}
+</ul>
+</section>
+{{end}}
+
+{{if .Assets}}
+<section class="listing">
+<h2>Assets</h2>
+<ul class="entries">
+{{range .Assets}}
+<li class="entry asset">
+<a class="entry-name" href="{{assetHref .Path}}">{{.Name}}</a>
+<span class="meta">{{humanSize .Size}} &middot; {{formatTime .ModTime}}</span>
+<img class="thumb" src="{{assetHref .Path}}" alt="" loading="lazy">
+{{template "fileActions" .}}
+</li>
+{{end}}
+</ul>
+</section>
+{{end}}
+
+{{if and (not .Dirs) (not .Documents) (not .Assets)}}
+<p class="empty">This folder is empty.</p>
+{{end}}
+
+<section class="forms">
+<form method="post" action="/ui/new" class="card">
+<h2>New document</h2>
+<input type="hidden" name="dir" value="{{.Path}}">
+<label>Filename <input type="text" name="name" required></label>
+<label>Content <textarea name="content" rows="6"></textarea></label>
+<button type="submit">Create document</button>
+</form>
+
+<form method="post" action="/ui/mkdir" class="card">
+<h2>New folder</h2>
+<input type="hidden" name="dir" value="{{.Path}}">
+<label>Name <input type="text" name="name" required></label>
+<button type="submit">Create folder</button>
+</form>
+
+<form method="post" action="/ui/upload" enctype="multipart/form-data" class="card">
+<h2>Upload files</h2>
+<input type="hidden" name="dir" value="{{.Path}}">
+<label>Files <input type="file" name="files" multiple required></label>
+<button type="submit">Upload</button>
+</form>
+</section>
+
+<script>
+(function () {
+  var zone = document.getElementById('dropzone');
+  if (!zone) return;
+  ['dragenter', 'dragover'].forEach(function (name) {
+    zone.addEventListener(name, function (event) {
+      event.preventDefault();
+      zone.classList.add('over');
+    });
+  });
+  ['dragleave', 'drop'].forEach(function (name) {
+    zone.addEventListener(name, function (event) {
+      event.preventDefault();
+      zone.classList.remove('over');
+    });
+  });
+  zone.addEventListener('drop', function (event) {
+    var files = event.dataTransfer.files;
+    if (!files.length) return;
+    var body = new FormData();
+    for (var i = 0; i < files.length; i++) {
+      body.append('files', files[i]);
+    }
+    var dir = zone.getAttribute('data-dir') || '';
+    fetch('/api/v1/upload?dir=' + encodeURIComponent(dir), { method: 'POST', body: body })
+      .then(function (response) {
+        return response.text().then(function (text) {
+          var result = null;
+          try {
+            result = JSON.parse(text);
+          } catch (error) {
+            result = null;
+          }
+          if (!response.ok) {
+            alert(text || 'Upload failed.');
+            return;
+          }
+          if (result && result.errors && result.errors.length) {
+            var lines = [];
+            for (var i = 0; i < result.errors.length; i++) {
+              var failure = result.errors[i];
+              lines.push((failure.name || 'file') + ': ' + (failure.error || 'failed'));
+            }
+            alert('Some files failed:\n' + lines.join('\n'));
+            return;
+          }
+          if (!result) {
+            alert(text || 'Upload failed.');
+            return;
+          }
+          window.location.reload();
+        });
+      })
+      .catch(function (error) { alert(String(error)); });
+  });
+}());
+</script>
+{{end}}
