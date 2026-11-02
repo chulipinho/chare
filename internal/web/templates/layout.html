@@ -4,7 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.Title}}</title>
-<link rel="stylesheet" href="/static/style.css">
+{{if .WrapCodeToggle}}<script>
+try {
+  if (localStorage.getItem('chare.wrapCode') === '1') {
+    document.documentElement.classList.add('wrap-code');
+  }
+} catch (error) {}
+</script>
+{{end}}<link rel="stylesheet" href="{{staticHref "style.css"}}">
 </head>
 <body class="{{.BodyClass}}">
 <div class="page">

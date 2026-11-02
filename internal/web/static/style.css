@@ -249,6 +249,11 @@ button.danger {
   color: var(--accent);
 }
 
+.reader-tools .wrap-toggle[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .reader-layout {
   display: block;
 }
@@ -299,6 +304,11 @@ button.danger {
   padding: 0.75rem;
   border-radius: 0.35rem;
   background: var(--code-bg);
+}
+
+.wrap-code .prose pre {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
 }
 
 .prose code {

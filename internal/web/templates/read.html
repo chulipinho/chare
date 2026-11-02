@@ -10,6 +10,7 @@
 <a href="?size=md" class="{{if eq .Size "md"}}active{{end}}">M</a>
 <a href="?size=lg" class="{{if eq .Size "lg"}}active{{end}}">L</a>
 </span>
+<button type="button" id="wrap-code-toggle" class="wrap-toggle" aria-pressed="false" hidden>Wrap code</button>
 <a href="{{simpleHref .Path}}">Simple reader</a>
 <a href="{{rawHref .Path}}">Raw</a>
 </div>
@@ -25,4 +26,31 @@
 {{end}}
 <article class="prose">{{.HTML}}</article>
 </div>
+<script>
+(function () {
+  var toggle = document.getElementById('wrap-code-toggle');
+  if (!toggle) return;
+
+  function setWrapped(wrapped) {
+    toggle.hidden = false;
+    if (wrapped) {
+      document.documentElement.classList.add('wrap-code');
+    } else {
+      document.documentElement.classList.remove('wrap-code');
+    }
+    toggle.setAttribute('aria-pressed', wrapped ? 'true' : 'false');
+    toggle.textContent = wrapped ? 'No wrap' : 'Wrap code';
+  }
+
+  setWrapped(document.documentElement.classList.contains('wrap-code'));
+
+  toggle.addEventListener('click', function () {
+    var wrapped = !document.documentElement.classList.contains('wrap-code');
+    setWrapped(wrapped);
+    try {
+      localStorage.setItem('chare.wrapCode', wrapped ? '1' : '0');
+    } catch (error) {}
+  });
+}());
+</script>
 {{end}}

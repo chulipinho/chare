@@ -124,6 +124,25 @@ func TestRichReader(t *testing.T) {
 	assertContains(t, body, "Hello rich reader.")
 	assertContains(t, body, "/simple/doc.md")
 	assertContains(t, body, "/raw/doc.md")
+	assertContains(t, body, `id="wrap-code-toggle"`)
+	assertContains(t, body, "chare.wrapCode")
+	assertContains(t, body, "Wrap code")
+	assertContains(t, body, "/static/style.css?v=")
+
+	rec = do(t, h, http.MethodGet, "/browse/", nil, "")
+	assertStatus(t, rec, http.StatusOK)
+	if strings.Contains(rec.Body.String(), "chare.wrapCode") {
+		t.Fatalf("browse page includes the reader wrap preference script:\n%s", rec.Body.String())
+	}
+}
+
+func TestReaderViewStylesheet(t *testing.T) {
+	h, _ := newTestServer(t)
+
+	rec := do(t, h, http.MethodGet, "/static/style.css", nil, "")
+	assertStatus(t, rec, http.StatusOK)
+	assertContains(t, rec.Body.String(), ".wrap-code .prose pre")
+	assertContains(t, rec.Body.String(), "white-space: pre-wrap")
 }
 
 func TestSimpleReader(t *testing.T) {
@@ -137,6 +156,8 @@ func TestSimpleReader(t *testing.T) {
 	assertContains(t, body, "Simple")
 	assertContains(t, body, "display: block")
 	assertContains(t, body, "overflow-x: auto")
+	assertContains(t, body, "white-space: pre-wrap")
+	assertContains(t, body, "overflow-wrap: break-word")
 	if strings.Contains(body, "<script") {
 		t.Fatalf("simple reader contains a script tag:\n%s", body)
 	}

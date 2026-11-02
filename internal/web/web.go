@@ -2,6 +2,7 @@ package web
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"embed"
 	"errors"
 	"fmt"
@@ -35,10 +36,11 @@ type crumb struct {
 }
 
 type basePage struct {
-	Title       string
-	BodyClass   string
-	Breadcrumbs []crumb
-	Path        string
+	Title          string
+	BodyClass      string
+	Breadcrumbs    []crumb
+	Path           string
+	WrapCodeToggle bool
 }
 
 type browsePage struct {
@@ -69,12 +71,13 @@ type formFailure struct {
 }
 
 type errorPage struct {
-	Status    int
-	Title     string
-	BodyClass string
-	Message   string
-	Back      string
-	Failures  []formFailure
+	Status         int
+	Title          string
+	BodyClass      string
+	Message        string
+	Back           string
+	Failures       []formFailure
+	WrapCodeToggle bool
 }
 
 type handler struct {
@@ -98,6 +101,11 @@ func New(lib *library.Library, rend *render.Renderer, cfg Config) (http.Handler,
 		maxUpload = 25 << 20
 	}
 
+	styleVersion, err := staticVersion("style.css")
+	if err != nil {
+		return nil, err
+	}
+
 	funcs := template.FuncMap{
 		"pathEscape":   escapePath,
 		"browseHref":   browseHref,
@@ -105,6 +113,7 @@ func New(lib *library.Library, rend *render.Renderer, cfg Config) (http.Handler,
 		"simpleHref":   simpleHref,
 		"rawHref":      rawHref,
 		"assetHref":    assetHref,
+		"staticHref":   staticHref(styleVersion),
 		"humanSize":    humanSize,
 		"formatTime":   formatTime,
 		"parentBrowse": parentBrowse,
@@ -168,6 +177,20 @@ func New(lib *library.Library, rend *render.Renderer, cfg Config) (http.Handler,
 func redirectHandler(location string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, location, http.StatusSeeOther)
+	}
+}
+
+func staticVersion(name string) (string, error) {
+	data, err := fs.ReadFile(staticFS, "static/"+name)
+	if err != nil {
+		return "", fmt.Errorf("web: read static %s: %w", name, err)
+	}
+	return fmt.Sprintf("%x", sha256.Sum256(data))[:12], nil
+}
+
+func staticHref(version string) func(string) string {
+	return func(name string) string {
+		return "/static/" + name + "?v=" + version
 	}
 }
 
@@ -279,10 +302,11 @@ func (h *handler) read(w http.ResponseWriter, r *http.Request) {
 
 	page := readPage{
 		basePage: basePage{
-			Title:       title,
-			BodyClass:   "reader size-" + size,
-			Breadcrumbs: breadcrumbs(parentBrowse(p)),
-			Path:        p,
+			Title:          title,
+			BodyClass:      "reader size-" + size,
+			Breadcrumbs:    breadcrumbs(parentBrowse(p)),
+			Path:           p,
+			WrapCodeToggle: true,
 		},
 		DocTitle: title,
 		Size:     size,

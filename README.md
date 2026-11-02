@@ -7,7 +7,7 @@ Point it at a directory, open it from another device, and read. Uploads, new doc
 ## Features
 
 - Browse, upload, create, rename, and delete documents from a browser.
-- Rich reader with breadcrumbs, table of contents, and font-size controls.
+- Rich reader with breadcrumbs, table of contents, font-size controls, and a code-wrap toggle that remembers your choice.
 - JavaScript-free Simple Reader designed for the Kindle experimental browser.
 - GitHub-flavored Markdown: tables, task lists, strikethrough, autolinks.
 - Relative links and images inside documents are rewritten automatically.
@@ -63,12 +63,12 @@ CHARE_ADDR=:9000 CHARE_DATA_DIR=~/documents ./chare
 ## Using the web UI
 
 - `/browse/` — the library. Navigate folders, upload files (or drag them onto the page), paste a new document, create a folder, rename or delete entries. Folder deletion only works when the folder is empty.
-- `/read/<path>` — rich reader. Includes a table of contents when the document has headings, `S`/`M`/`L` font-size links (`?size=sm|md|lg`), and links to the Simple Reader and raw source.
-- `/simple/<path>` — the Simple Reader. No JavaScript, no external stylesheet, large type, minimal layout.
+- `/read/<path>` — rich reader. Includes a table of contents when the document has headings, `S`/`M`/`L` font-size links (`?size=sm|md|lg`), a `Wrap code` toggle that is remembered in the browser, and links to the Simple Reader and raw source.
+- `/simple/<path>` — the Simple Reader. No JavaScript, no external stylesheet, large type, minimal layout. Long code lines wrap by default.
 - `/raw/<path>` — the file exactly as stored.
 - `/assets/<path>` — images referenced by documents.
 
-The management page works without JavaScript. JavaScript is only used for drag-and-drop uploading and the delete confirmation dialog. New documents stay in the current folder (a name without an extension gets `.md`); renames keep the entry in its current folder and require a supported extension. Names may not contain slashes.
+The management page works without JavaScript. JavaScript is only used for drag-and-drop uploading, the delete confirmation dialog, and remembering the rich reader's code-wrap preference. New documents stay in the current folder (a name without an extension gets `.md`); renames keep the entry in its current folder and require a supported extension. Names may not contain slashes.
 
 ### Reading on a Kindle
 
