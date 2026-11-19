@@ -1,6 +1,6 @@
 # chare
 
-A small, self-hosted Markdown library for reading documents across devices — phone, tablet, laptop, and the jailbroken Kindle in the drawer. It is a single Go binary with an embedded web UI and a versioned HTTP API. The filesystem is the source of truth: any folder of Markdown files is a valid library.
+A small, self-hosted document library for reading Markdown and HTML across devices — phone, tablet, laptop, and the jailbroken Kindle in the drawer. It is a single Go binary with an embedded web UI and a versioned HTTP API. The filesystem is the source of truth: any folder of Markdown or HTML files is a valid library.
 
 Point it at a directory, open it from another device, and read. Uploads, new documents, folders, renames, and deletes all happen from the web UI; the API exists for future apps and scripts.
 
@@ -10,6 +10,7 @@ Point it at a directory, open it from another device, and read. Uploads, new doc
 - Rich reader with breadcrumbs, table of contents, font-size controls, and a code-wrap toggle that remembers your choice.
 - JavaScript-free Simple Reader designed for the Kindle experimental browser.
 - GitHub-flavored Markdown: tables, task lists, strikethrough, autolinks.
+- HTML documents render full-fidelity in a sandboxed frame; scripts stay disabled.
 - Relative links and images inside documents are rewritten automatically.
 - Raw view and download for every document.
 - JSON API (`/api/v1`) for scripting or a future Kindle app.
@@ -65,7 +66,8 @@ CHARE_ADDR=:9000 CHARE_DATA_DIR=~/documents ./chare
 - `/browse/` — the library. Navigate folders, upload files (or drag them onto the page), paste a new document, create a folder, rename or delete entries. Folder deletion only works when the folder is empty.
 - `/read/<path>` — rich reader. Includes a table of contents when the document has headings, `S`/`M`/`L` font-size links (`?size=sm|md|lg`), a `Wrap code` toggle that is remembered in the browser, and links to the Simple Reader and raw source.
 - `/simple/<path>` — the Simple Reader. No JavaScript, no external stylesheet, large type, minimal layout. Long code lines wrap by default.
-- `/raw/<path>` — the file exactly as stored.
+- `/raw/<path>` — the file exactly as stored; HTML documents are shown as plain-text source.
+- `/html/<path>` — an HTML document as stored, isolated in a sandboxed page.
 - `/assets/<path>` — images referenced by documents.
 
 The management page works without JavaScript. JavaScript is only used for drag-and-drop uploading, the delete confirmation dialog, and remembering the rich reader's code-wrap preference. New documents stay in the current folder (a name without an extension gets `.md`); renames keep the entry in its current folder and require a supported extension. Names may not contain slashes.
@@ -84,11 +86,12 @@ From the rich reader, use the “Simple reader” link. You can also bookmark a 
 
 | Kind | Extensions | Behavior |
 | --- | --- | --- |
-| Document | `.md`, `.markdown`, `.txt` | Listed, readable, rendered as Markdown (plain text docs too). |
+| Markdown document | `.md`, `.markdown`, `.txt` | Listed, readable, rendered as Markdown (plain text docs too). |
+| HTML document | `.html`, `.htm` | Listed, readable full-fidelity in a sandboxed frame; scripts are disabled. |
 | Asset | `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp` | Listed, served inline, usable in document images. |
 | Everything else | — | Rejected with HTTP 415. SVG is intentionally not allowed. |
 
-YAML frontmatter at the start of a document is stripped when rendering, but kept in the raw file. Names beginning with `.`, paths containing `.` or `..` segments, backslashes, and symlinks are rejected. Uploads and new documents never overwrite existing files; `PUT` with `?overwrite=true` is the only replace path. Writes are atomic.
+YAML frontmatter at the start of a Markdown document is stripped when rendering, but kept in the raw file. HTML documents are not parsed by the Markdown pipeline or rewritten. Names beginning with `.`, paths containing `.` or `..` segments, backslashes, and symlinks are rejected. Uploads and new documents never overwrite existing files; `PUT` with `?overwrite=true` is the only replace path. Writes are atomic.
 
 ## HTTP API
 
@@ -98,7 +101,7 @@ All endpoints live under `/api/v1`. Responses are JSON except when returning doc
 | --- | --- | --- |
 | `GET` | `/api/v1/health` | `{"status":"ok"}` |
 | `GET` | `/api/v1/tree?path=plans` | List a directory. Omit `path` for the root. |
-| `GET` | `/api/v1/files/{path}` | Raw file, or rendered HTML with `?format=html` or `Accept: text/html`. Add `?download=1` for an attachment. |
+| `GET` | `/api/v1/files/{path}` | Raw file, or rendered HTML with `?format=html` or `Accept: text/html`. HTML documents are returned as stored with a sandboxed CSP. Add `?download=1` for an attachment. |
 | `PUT` | `/api/v1/files/{path}` | Create or replace a file from the request body. `?overwrite=true` permits replacing; `201` on create, `200` on replace. |
 | `PATCH` | `/api/v1/files/{path}` | Rename/move. Body: `{"to":"new/path.md"}`. Existing destinations return `409`. |
 | `DELETE` | `/api/v1/files/{path}` | Permanently delete a file. Returns `204`. |
@@ -205,6 +208,7 @@ chare is designed for a trusted home network and has **no authentication and no 
 
 - Do not expose it to the public internet. Use a VPN such as Tailscale, or put an authenticating reverse proxy in front of it.
 - Uploaded Markdown is sanitized before rendering; scripts, iframes, forms, SVG, event handlers, and `javascript:` URLs are stripped.
+- HTML documents are served as stored, but with a sandbox CSP that disables scripts, forms, frames, and plugins. `/raw/*.html` returns source as plain text.
 - All paths are confined to the data directory; `..`, hidden paths, and symlinks are rejected.
 - Only Documents and raster Assets can be created; everything else returns `415`.
 - Uploads are size-limited and written atomically. Deletion is permanent.
