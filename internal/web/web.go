@@ -58,6 +58,11 @@ type readPage struct {
 	HTML     template.HTML
 }
 
+type htmlReadPage struct {
+	basePage
+	DocTitle string
+}
+
 type simplePage struct {
 	Title  string
 	Parent string
@@ -112,6 +117,7 @@ func New(lib *library.Library, rend *render.Renderer, cfg Config) (http.Handler,
 		"readHref":     readHref,
 		"simpleHref":   simpleHref,
 		"rawHref":      rawHref,
+		"htmlHref":     htmlHref,
 		"assetHref":    assetHref,
 		"staticHref":   staticHref(styleVersion),
 		"humanSize":    humanSize,
@@ -120,7 +126,7 @@ func New(lib *library.Library, rend *render.Renderer, cfg Config) (http.Handler,
 	}
 
 	templates := make(map[string]*template.Template, 4)
-	for _, name := range []string{"browse", "read", "error"} {
+	for _, name := range []string{"browse", "read", "htmlread", "error"} {
 		t, err := template.New(name).Funcs(funcs).ParseFS(
 			templateFS,
 			"templates/layout.html",
@@ -289,7 +295,25 @@ func (h *handler) browse(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) read(w http.ResponseWriter, r *http.Request) {
-	p, result, ok := h.document(w, r)
+	p, data, ok := h.document(w, r)
+	if !ok {
+		return
+	}
+	if library.IsHTML(p) {
+		title := titleFromPath(p)
+		page := htmlReadPage{
+			basePage: basePage{
+				Title:       title,
+				BodyClass:   "reader html-reader",
+				Breadcrumbs: breadcrumbs(parentBrowse(p)),
+				Path:        p,
+			},
+			DocTitle: title,
+		}
+		h.renderHTML(w, r, http.StatusOK, "htmlread", page)
+		return
+	}
+	result, ok := h.renderDocument(w, r, p, data)
 	if !ok {
 		return
 	}
@@ -323,7 +347,11 @@ func (h *handler) read(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) simple(w http.ResponseWriter, r *http.Request) {
-	p, result, ok := h.document(w, r)
+	p, data, ok := h.document(w, r)
+	if !ok {
+		return
+	}
+	result, ok := h.renderDocument(w, r, p, data)
 	if !ok {
 		return
 	}
@@ -341,23 +369,27 @@ func (h *handler) simple(w http.ResponseWriter, r *http.Request) {
 	h.renderHTML(w, r, http.StatusOK, "simple", page)
 }
 
-func (h *handler) document(w http.ResponseWriter, r *http.Request) (string, render.Result, bool) {
+func (h *handler) document(w http.ResponseWriter, r *http.Request) (string, []byte, bool) {
 	p := r.PathValue("path")
 	data, entry, err := h.lib.Read(p)
 	if err != nil {
 		h.failLibrary(w, r, p, err)
-		return "", render.Result{}, false
+		return "", nil, false
 	}
 	if entry.Kind != library.KindDocument {
 		h.fail(w, r, http.StatusNotFound, "The requested document was not found.", parentBrowse(p))
-		return "", render.Result{}, false
+		return "", nil, false
 	}
+	return p, data, true
+}
+
+func (h *handler) renderDocument(w http.ResponseWriter, r *http.Request, p string, data []byte) (render.Result, bool) {
 	result, err := h.rend.Render(p, data)
 	if err != nil {
 		h.fail(w, r, http.StatusInternalServerError, "The document could not be rendered.", parentBrowse(p))
-		return "", render.Result{}, false
+		return render.Result{}, false
 	}
-	return p, result, true
+	return result, true
 }
 
 func (h *handler) raw(w http.ResponseWriter, r *http.Request) {
@@ -782,6 +814,10 @@ func simpleHref(p string) string {
 
 func rawHref(p string) string {
 	return "/raw/" + escapePath(p)
+}
+
+func htmlHref(p string) string {
+	return "/html/" + escapePath(p)
 }
 
 func assetHref(p string) string {
