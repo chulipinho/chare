@@ -276,6 +276,40 @@ func TestFiles(t *testing.T) {
 	if got := resp.header.Get("Cache-Control"); got != "no-cache" {
 		t.Fatalf("png Cache-Control = %q", got)
 	}
+
+	htmlDoc := "<!doctype html><h1>Page</h1><script>alert(1)</script>"
+	resp = env.request(t, http.MethodPut, "/api/v1/files/page.html", strings.NewReader(htmlDoc), nil)
+	assertStatus(t, resp, http.StatusCreated)
+	resp = env.request(t, http.MethodGet, "/api/v1/files/page.html", nil, nil)
+	assertStatus(t, resp, http.StatusOK)
+	if got := resp.header.Get("Content-Type"); got != "text/html; charset=utf-8" {
+		t.Fatalf("html Content-Type = %q", got)
+	}
+	if string(resp.body) != htmlDoc {
+		t.Fatalf("html body = %q", resp.body)
+	}
+	csp := resp.header.Get("Content-Security-Policy")
+	if !strings.Contains(csp, "sandbox allow-same-origin") {
+		t.Fatalf("html Content-Security-Policy = %q", csp)
+	}
+	if strings.Contains(csp, "allow-scripts") {
+		t.Fatalf("html Content-Security-Policy allows scripts: %q", csp)
+	}
+	if got := resp.header.Get("Referrer-Policy"); got != "no-referrer" {
+		t.Fatalf("html Referrer-Policy = %q", got)
+	}
+
+	resp = env.request(t, http.MethodGet, "/api/v1/files/page.html?format=html", nil, nil)
+	assertStatus(t, resp, http.StatusOK)
+	if string(resp.body) != htmlDoc {
+		t.Fatalf("formatted html body = %q", resp.body)
+	}
+
+	resp = env.request(t, http.MethodGet, "/api/v1/files/page.html?download=1", nil, nil)
+	assertStatus(t, resp, http.StatusOK)
+	if got := resp.header.Get("Content-Disposition"); got != `attachment; filename="page.html"` {
+		t.Fatalf("html Content-Disposition = %q", got)
+	}
 }
 
 func multipartBody(t *testing.T, dir string, files map[string]string) (*bytes.Buffer, string) {
@@ -313,6 +347,7 @@ func TestUpload(t *testing.T) {
 
 	body, contentType := multipartBody(t, "", map[string]string{
 		"a.md":        "# A\n",
+		"page.html":   "<h1>Page</h1>",
 		"dup.md":      "# duplicate\n",
 		`dir\evil.md`: "# Evil\n",
 	})
@@ -320,7 +355,7 @@ func TestUpload(t *testing.T) {
 	assertStatus(t, resp, http.StatusOK)
 	assertCommonHeaders(t, resp)
 	result := decodeJSON[uploadResponse](t, resp.body)
-	if len(result.Uploaded) != 2 {
+	if len(result.Uploaded) != 3 {
 		t.Fatalf("uploaded = %+v; errors = %+v", result.Uploaded, result.Errors)
 	}
 	if len(result.Errors) != 1 || result.Errors[0].Name != "dup.md" || result.Errors[0].Error != "already exists" {
@@ -330,7 +365,7 @@ func TestUpload(t *testing.T) {
 	for _, entry := range result.Uploaded {
 		names[entry.Name] = true
 	}
-	if !names["a.md"] || !names["evil.md"] {
+	if !names["a.md"] || !names["evil.md"] || !names["page.html"] {
 		t.Fatalf("uploaded names = %v", names)
 	}
 
@@ -421,7 +456,7 @@ func TestTraversal(t *testing.T) {
 
 func TestErrors(t *testing.T) {
 	env := newTestEnv(t, 0)
-	assertErrorCode(t, env.request(t, http.MethodPut, "/api/v1/files/bad.html", strings.NewReader("x"), nil), http.StatusUnsupportedMediaType, "unsupported_type")
+	assertErrorCode(t, env.request(t, http.MethodPut, "/api/v1/files/bad.zzz", strings.NewReader("x"), nil), http.StatusUnsupportedMediaType, "unsupported_type")
 
 	resp := env.request(t, http.MethodPatch, "/api/v1/files/missing.md", strings.NewReader("{"), map[string]string{"Content-Type": "application/json"})
 	assertErrorCode(t, resp, http.StatusBadRequest, "bad_request")
