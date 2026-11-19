@@ -351,6 +351,10 @@ func (h *handler) simple(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if library.IsHTML(p) {
+		h.seeOther(w, r, htmlHref(p))
+		return
+	}
 	result, ok := h.renderDocument(w, r, p, data)
 	if !ok {
 		return
@@ -405,7 +409,8 @@ func (h *handler) raw(w http.ResponseWriter, r *http.Request) {
 	}
 
 	contentType := "text/markdown; charset=utf-8"
-	if strings.EqualFold(path.Ext(p), ".txt") {
+	switch strings.ToLower(path.Ext(p)) {
+	case ".txt", ".html", ".htm":
 		contentType = "text/plain; charset=utf-8"
 	}
 	w.Header().Set("Content-Type", contentType)
