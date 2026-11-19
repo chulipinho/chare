@@ -104,7 +104,8 @@ func TestKindFor(t *testing.T) {
 		"a.jpeg":       KindAsset,
 		"a.gif":        KindAsset,
 		"a.webp":       KindAsset,
-		"a.html":       "",
+		"a.html":       KindDocument,
+		"a.HTM":        KindDocument,
 		"a":            "",
 		"a.md.txt":     KindDocument,
 		"a.png.md":     KindDocument,
@@ -115,6 +116,19 @@ func TestKindFor(t *testing.T) {
 	for name, want := range tests {
 		if got := KindFor(name); got != want {
 			t.Errorf("KindFor(%q) = %q, want %q", name, got, want)
+		}
+	}
+}
+
+func TestIsHTML(t *testing.T) {
+	for _, name := range []string{"a.html", "a.HTM", "dir/page.Html"} {
+		if !IsHTML(name) {
+			t.Errorf("IsHTML(%q) = false, want true", name)
+		}
+	}
+	for _, name := range []string{"a.md", "a.txt", "a", "a.png"} {
+		if IsHTML(name) {
+			t.Errorf("IsHTML(%q) = true, want false", name)
 		}
 	}
 }

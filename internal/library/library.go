@@ -409,12 +409,22 @@ func (l *Library) Rmdir(rel string) error {
 
 func KindFor(name string) Kind {
 	switch strings.ToLower(path.Ext(name)) {
-	case ".md", ".markdown", ".txt":
+	case ".md", ".markdown", ".txt", ".html", ".htm":
 		return KindDocument
 	case ".png", ".jpg", ".jpeg", ".gif", ".webp":
 		return KindAsset
 	default:
 		return ""
+	}
+}
+
+// IsHTML reports whether name has an HTML document extension.
+func IsHTML(name string) bool {
+	switch strings.ToLower(path.Ext(name)) {
+	case ".html", ".htm":
+		return true
+	default:
+		return false
 	}
 }
 
