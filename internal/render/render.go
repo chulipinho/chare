@@ -171,7 +171,7 @@ func rewriteDestination(dest []byte, base string) []byte {
 
 	ext := strings.ToLower(path.Ext(resolved))
 	switch ext {
-	case ".md", ".markdown", ".txt":
+	case ".md", ".markdown", ".txt", ".html", ".htm":
 		return []byte("/read/" + escapePath(resolved) + suffix)
 	case ".png", ".jpg", ".jpeg", ".gif", ".webp":
 		return []byte("/assets/" + escapePath(resolved) + suffix)
