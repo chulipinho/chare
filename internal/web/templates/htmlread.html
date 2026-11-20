@@ -1,0 +1,14 @@
+{{define "content"}}
+<nav class="breadcrumbs" aria-label="Breadcrumbs">
+{{range $i, $c := .Breadcrumbs}}{{if $i}}<span class="sep">/</span>{{end}}<a href="{{browseHref $c.Path}}">{{$c.Name}}</a>{{end}}
+</nav>
+<header class="doc-header">
+<h1>{{.DocTitle}}</h1>
+<div class="reader-tools">
+<a href="{{htmlHref .Path}}">Full page</a>
+<a href="{{simpleHref .Path}}">Simple reader</a>
+<a href="{{rawHref .Path}}">Raw</a>
+</div>
+</header>
+<iframe class="html-frame" src="{{htmlHref .Path}}" sandbox="allow-same-origin" title="{{.DocTitle}}" referrerpolicy="no-referrer"></iframe>
+{{end}}

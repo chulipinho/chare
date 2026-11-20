@@ -9,8 +9,12 @@ The directory tree configured as `DATA_DIR`; the only source of truth for conten
 _Avoid_: Store, vault, database
 
 **Document**:
-A Markdown or plain-text file inside the Library.
+A Markdown, plain-text, or HTML file inside the Library.
 _Avoid_: Note, plan, page, file
+
+**HTML Document**:
+A Document with a `.html` or `.htm` extension. It is served as stored inside a sandboxed frame instead of being rendered as Markdown.
+_Avoid_: Page, web page, site
 
 **Asset**:
 A raster image (`.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`) inside the Library, referenced by a Document.

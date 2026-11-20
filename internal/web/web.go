@@ -58,6 +58,11 @@ type readPage struct {
 	HTML     template.HTML
 }
 
+type htmlReadPage struct {
+	basePage
+	DocTitle string
+}
+
 type simplePage struct {
 	Title  string
 	Parent string
@@ -112,6 +117,7 @@ func New(lib *library.Library, rend *render.Renderer, cfg Config) (http.Handler,
 		"readHref":     readHref,
 		"simpleHref":   simpleHref,
 		"rawHref":      rawHref,
+		"htmlHref":     htmlHref,
 		"assetHref":    assetHref,
 		"staticHref":   staticHref(styleVersion),
 		"humanSize":    humanSize,
@@ -120,7 +126,7 @@ func New(lib *library.Library, rend *render.Renderer, cfg Config) (http.Handler,
 	}
 
 	templates := make(map[string]*template.Template, 4)
-	for _, name := range []string{"browse", "read", "error"} {
+	for _, name := range []string{"browse", "read", "htmlread", "error"} {
 		t, err := template.New(name).Funcs(funcs).ParseFS(
 			templateFS,
 			"templates/layout.html",
@@ -162,6 +168,7 @@ func New(lib *library.Library, rend *render.Renderer, cfg Config) (http.Handler,
 	mux.HandleFunc("GET /read/{path...}", h.read)
 	mux.HandleFunc("GET /simple/{path...}", h.simple)
 	mux.HandleFunc("GET /raw/{path...}", h.raw)
+	mux.HandleFunc("GET /html/{path...}", h.html)
 	mux.HandleFunc("GET /assets/{path...}", h.asset)
 	mux.Handle("GET /static/{path...}", h.static)
 	mux.HandleFunc("POST /ui/upload", h.upload)
@@ -195,6 +202,11 @@ func staticHref(version string) func(string) string {
 }
 
 const contentSecurityPolicy = "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'"
+
+// sandboxedHTMLPolicy isolates user-supplied HTML. allow-same-origin keeps
+// relative images and styles working; scripts, forms, frames, and plugins
+// stay disabled.
+const sandboxedHTMLPolicy = "sandbox allow-same-origin; default-src 'none'; img-src 'self' data: https:; style-src 'unsafe-inline' 'self'; font-src 'self' data:; media-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'"
 
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -283,7 +295,25 @@ func (h *handler) browse(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) read(w http.ResponseWriter, r *http.Request) {
-	p, result, ok := h.document(w, r)
+	p, data, ok := h.document(w, r)
+	if !ok {
+		return
+	}
+	if library.IsHTML(p) {
+		title := titleFromPath(p)
+		page := htmlReadPage{
+			basePage: basePage{
+				Title:       title,
+				BodyClass:   "reader html-reader",
+				Breadcrumbs: breadcrumbs(parentBrowse(p)),
+				Path:        p,
+			},
+			DocTitle: title,
+		}
+		h.renderHTML(w, r, http.StatusOK, "htmlread", page)
+		return
+	}
+	result, ok := h.renderDocument(w, r, p, data)
 	if !ok {
 		return
 	}
@@ -317,7 +347,15 @@ func (h *handler) read(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) simple(w http.ResponseWriter, r *http.Request) {
-	p, result, ok := h.document(w, r)
+	p, data, ok := h.document(w, r)
+	if !ok {
+		return
+	}
+	if library.IsHTML(p) {
+		h.seeOther(w, r, htmlHref(p))
+		return
+	}
+	result, ok := h.renderDocument(w, r, p, data)
 	if !ok {
 		return
 	}
@@ -335,23 +373,27 @@ func (h *handler) simple(w http.ResponseWriter, r *http.Request) {
 	h.renderHTML(w, r, http.StatusOK, "simple", page)
 }
 
-func (h *handler) document(w http.ResponseWriter, r *http.Request) (string, render.Result, bool) {
+func (h *handler) document(w http.ResponseWriter, r *http.Request) (string, []byte, bool) {
 	p := r.PathValue("path")
 	data, entry, err := h.lib.Read(p)
 	if err != nil {
 		h.failLibrary(w, r, p, err)
-		return "", render.Result{}, false
+		return "", nil, false
 	}
 	if entry.Kind != library.KindDocument {
 		h.fail(w, r, http.StatusNotFound, "The requested document was not found.", parentBrowse(p))
-		return "", render.Result{}, false
+		return "", nil, false
 	}
+	return p, data, true
+}
+
+func (h *handler) renderDocument(w http.ResponseWriter, r *http.Request, p string, data []byte) (render.Result, bool) {
 	result, err := h.rend.Render(p, data)
 	if err != nil {
 		h.fail(w, r, http.StatusInternalServerError, "The document could not be rendered.", parentBrowse(p))
-		return "", render.Result{}, false
+		return render.Result{}, false
 	}
-	return p, result, true
+	return result, true
 }
 
 func (h *handler) raw(w http.ResponseWriter, r *http.Request) {
@@ -367,13 +409,43 @@ func (h *handler) raw(w http.ResponseWriter, r *http.Request) {
 	}
 
 	contentType := "text/markdown; charset=utf-8"
-	if strings.EqualFold(path.Ext(p), ".txt") {
+	switch strings.ToLower(path.Ext(p)) {
+	case ".txt", ".html", ".htm":
 		contentType = "text/plain; charset=utf-8"
 	}
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Content-Disposition", "inline")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(data)
+}
+
+func (h *handler) html(w http.ResponseWriter, r *http.Request) {
+	p := r.PathValue("path")
+	data, entry, err := h.lib.Read(p)
+	if err != nil {
+		if errors.Is(err, library.ErrUnsupportedType) {
+			h.fail(w, r, http.StatusNotFound, "The requested HTML document was not found.", parentBrowse(p))
+			return
+		}
+		h.failLibrary(w, r, p, err)
+		return
+	}
+
+	switch {
+	case entry.Kind == library.KindDocument && library.IsHTML(p):
+		header := w.Header()
+		header.Set("Content-Type", "text/html; charset=utf-8")
+		header.Set("Content-Security-Policy", sandboxedHTMLPolicy)
+		header.Set("X-Frame-Options", "SAMEORIGIN")
+		header.Set("Referrer-Policy", "no-referrer")
+		header.Set("Cache-Control", "no-store")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(data)
+	case entry.Kind == library.KindAsset:
+		h.serveAsset(w, p, data)
+	default:
+		h.fail(w, r, http.StatusNotFound, "The requested HTML document was not found.", parentBrowse(p))
+	}
 }
 
 func (h *handler) asset(w http.ResponseWriter, r *http.Request) {
@@ -387,27 +459,33 @@ func (h *handler) asset(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, http.StatusNotFound, "The requested asset was not found.", parentBrowse(p))
 		return
 	}
+	h.serveAsset(w, p, data)
+}
 
-	var contentType string
-	switch strings.ToLower(path.Ext(p)) {
-	case ".png":
-		contentType = "image/png"
-	case ".jpg", ".jpeg":
-		contentType = "image/jpeg"
-	case ".gif":
-		contentType = "image/gif"
-	case ".webp":
-		contentType = "image/webp"
-	default:
-		contentType = mime.TypeByExtension(strings.ToLower(path.Ext(p)))
-		if contentType == "" {
-			contentType = "application/octet-stream"
-		}
-	}
-	w.Header().Set("Content-Type", contentType)
+func (h *handler) serveAsset(w http.ResponseWriter, p string, data []byte) {
+	w.Header().Set("Content-Type", assetContentType(p))
 	w.Header().Set("Cache-Control", "no-cache")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(data)
+}
+
+func assetContentType(p string) string {
+	switch strings.ToLower(path.Ext(p)) {
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".gif":
+		return "image/gif"
+	case ".webp":
+		return "image/webp"
+	default:
+		contentType := mime.TypeByExtension(strings.ToLower(path.Ext(p)))
+		if contentType == "" {
+			return "application/octet-stream"
+		}
+		return contentType
+	}
 }
 
 func (h *handler) upload(w http.ResponseWriter, r *http.Request) {
@@ -741,6 +819,10 @@ func simpleHref(p string) string {
 
 func rawHref(p string) string {
 	return "/raw/" + escapePath(p)
+}
+
+func htmlHref(p string) string {
+	return "/html/" + escapePath(p)
 }
 
 func assetHref(p string) string {

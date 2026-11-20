@@ -205,6 +205,85 @@ func TestAsset(t *testing.T) {
 	}
 }
 
+func TestHTMLDocument(t *testing.T) {
+	h, lib := newTestServer(t)
+	src := "<!doctype html><html><head><title>Page</title><style>body{color:red}</style></head>" +
+		"<body><h1>Page</h1><script>alert(1)</script><img src=\"pic.png\"></body></html>"
+	writeDoc(t, lib, "page.html", src)
+	png := []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}
+	if _, err := lib.Write("pic.png", png, false); err != nil {
+		t.Fatalf("Write asset: %v", err)
+	}
+
+	rec := do(t, h, http.MethodGet, "/browse/", nil, "")
+	assertStatus(t, rec, http.StatusOK)
+	assertContains(t, rec.Body.String(), "/read/page.html")
+
+	rec = do(t, h, http.MethodGet, "/read/page.html", nil, "")
+	assertStatus(t, rec, http.StatusOK)
+	body := rec.Body.String()
+	assertContains(t, body, `src="/html/page.html"`)
+	assertContains(t, body, `sandbox="allow-same-origin"`)
+	assertContains(t, body, "/simple/page.html")
+	assertContains(t, body, "/raw/page.html")
+
+	rec = do(t, h, http.MethodGet, "/html/page.html", nil, "")
+	assertStatus(t, rec, http.StatusOK)
+	if got := rec.Header().Get("Content-Type"); got != "text/html; charset=utf-8" {
+		t.Fatalf("Content-Type = %q", got)
+	}
+	if got := rec.Header().Get("X-Frame-Options"); got != "SAMEORIGIN" {
+		t.Fatalf("X-Frame-Options = %q", got)
+	}
+	if got := rec.Header().Get("Referrer-Policy"); got != "no-referrer" {
+		t.Fatalf("Referrer-Policy = %q", got)
+	}
+	csp := rec.Header().Get("Content-Security-Policy")
+	if !strings.Contains(csp, "sandbox allow-same-origin") {
+		t.Fatalf("Content-Security-Policy missing sandbox: %q", csp)
+	}
+	if strings.Contains(csp, "allow-scripts") {
+		t.Fatalf("Content-Security-Policy allows scripts: %q", csp)
+	}
+	if rec.Body.String() != src {
+		t.Fatalf("HTML body was modified:\n%s", rec.Body.String())
+	}
+
+	rec = do(t, h, http.MethodGet, "/html/pic.png", nil, "")
+	assertStatus(t, rec, http.StatusOK)
+	if got := rec.Header().Get("Content-Type"); got != "image/png" {
+		t.Fatalf("asset Content-Type = %q", got)
+	}
+	if !bytes.Equal(rec.Body.Bytes(), png) {
+		t.Fatal("asset body differs from stored bytes")
+	}
+
+	writeDoc(t, lib, "doc.md", "# Doc\n")
+	rec = do(t, h, http.MethodGet, "/html/doc.md", nil, "")
+	assertStatus(t, rec, http.StatusNotFound)
+}
+
+func TestHTMLDocumentSourceViews(t *testing.T) {
+	h, lib := newTestServer(t)
+	src := "<!doctype html><h1>Page</h1><script>alert(1)</script>"
+	writeDoc(t, lib, "page.html", src)
+
+	rec := do(t, h, http.MethodGet, "/raw/page.html", nil, "")
+	assertStatus(t, rec, http.StatusOK)
+	if got := rec.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/plain") {
+		t.Fatalf("Content-Type = %q, want text/plain", got)
+	}
+	if rec.Body.String() != src {
+		t.Fatalf("raw body = %q", rec.Body.String())
+	}
+
+	rec = do(t, h, http.MethodGet, "/simple/page.html", nil, "")
+	assertStatus(t, rec, http.StatusSeeOther)
+	if got := rec.Header().Get("Location"); got != "/html/page.html" {
+		t.Fatalf("Location = %q, want /html/page.html", got)
+	}
+}
+
 func TestNewDocument(t *testing.T) {
 	h, lib := newTestServer(t)
 
@@ -219,6 +298,19 @@ func TestNewDocument(t *testing.T) {
 	}
 	if _, err := lib.Stat("note.md"); err != nil {
 		t.Fatalf("created document missing: %v", err)
+	}
+
+	rec = postForm(t, h, "/ui/new", url.Values{
+		"dir":     {""},
+		"name":    {"page.html"},
+		"content": {"<h1>Page</h1>"},
+	})
+	assertStatus(t, rec, http.StatusSeeOther)
+	if got := rec.Header().Get("Location"); got != "/read/page.html" {
+		t.Fatalf("Location = %q, want /read/page.html", got)
+	}
+	if _, err := lib.Stat("page.html"); err != nil {
+		t.Fatalf("created HTML document missing: %v", err)
 	}
 }
 
@@ -238,6 +330,13 @@ func TestUpload(t *testing.T) {
 	if _, err := part.Write([]byte("uploaded")); err != nil {
 		t.Fatal(err)
 	}
+	part, err = writer.CreateFormFile("files", "page.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write([]byte("<h1>Page</h1>")); err != nil {
+		t.Fatal(err)
+	}
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -249,6 +348,9 @@ func TestUpload(t *testing.T) {
 	}
 	if _, err := lib.Stat("sub/upload.txt"); err != nil {
 		t.Fatalf("uploaded file missing: %v", err)
+	}
+	if _, err := lib.Stat("sub/page.html"); err != nil {
+		t.Fatalf("uploaded HTML document missing: %v", err)
 	}
 }
 

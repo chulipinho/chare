@@ -200,6 +200,13 @@ func TestPercentEncodedLinks(t *testing.T) {
 	}
 }
 
+func TestHTMLDocumentLinks(t *testing.T) {
+	res := mustRender(t, "dir/doc.md", "[a](page.html)\n\n[b](other.htm#part)\n")
+
+	assertContains(t, res.HTML, `href="/read/dir/page.html"`)
+	assertContains(t, res.HTML, `href="/read/dir/other.htm#part"`)
+}
+
 func TestBrowseAndUnknownTargets(t *testing.T) {
 	src := "[Sub](sub/)\n\n[Up](../top)\n\n[Pdf](file.pdf)\n"
 

@@ -169,11 +169,26 @@ func (a *api) handleTree(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+const sandboxedHTMLPolicy = "sandbox allow-same-origin; default-src 'none'; img-src 'self' data: https:; style-src 'unsafe-inline' 'self'; font-src 'self' data:; media-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
+
 func (a *api) handleGetFile(w http.ResponseWriter, r *http.Request) {
 	rel := r.PathValue("path")
 	data, entry, err := a.lib.Read(rel)
 	if err != nil {
 		writeError(w, err)
+		return
+	}
+
+	if entry.Kind == library.KindDocument && library.IsHTML(rel) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Content-Security-Policy", sandboxedHTMLPolicy)
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		if wantsDownload(r) {
+			setAttachment(w, rel)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(data)
 		return
 	}
 
@@ -387,6 +402,8 @@ func rawContentType(rel string) (string, bool) {
 		return "text/markdown; charset=utf-8", false
 	case ".txt":
 		return "text/plain; charset=utf-8", false
+	case ".html", ".htm":
+		return "text/html; charset=utf-8", false
 	case ".png":
 		return "image/png", true
 	case ".jpg", ".jpeg":
